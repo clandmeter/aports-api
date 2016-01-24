@@ -1,0 +1,19 @@
+local config = {}
+
+--- set the branches,repos,archs you want to include
+config.branches = {"latest-stable", "edge"}
+config.repos = {"main", "community", "testing"}
+config.archs  = {"x86", "x86_64", "armhf"}
+--- location of the mirror on disk
+config.mirror = "/media/mirror/alpine"
+--- the api uri
+config.uri = "http://172.16.4.12:8080"
+--- database settings
+config.db = {}
+config.db.fields = {"provides", "depends", "install_if"}
+--- debug logging. true to enable to stdout, syslog to syslog 
+config.logging = true
+--- update frequencie in minutes
+config.update = 15
+
+return config
