@@ -194,11 +194,13 @@ function aports:addPackages(branch, add)
         local apk = string.format("%s/%s/%s/%s/%s-%s.apk",
             self.mirror, branch, pkg.repo, pkg.arch, pkg.name, pkg.version)
         if self:fileExists(apk) then
-            self:log(string.format("Adding: %s/%s/%s/%s", branch, pkg.repo, pkg.arch, pkg.name))
+            self:log(string.format("Adding: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
             pkg.maintainer = self:addMaintainer(pkg.maintainer)
             local pid = self:addHeader(pkg)
             self:addFields(branch,pid,pkg)
             self:addFiles(branch,pid,apk)
+        else
+            self:log(string.format("Could not find pkg: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
         end
     end
 end
