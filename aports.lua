@@ -30,11 +30,15 @@ end
 
 function aports:openDB()
     self.db = sqlite.open("aports.db")
-    self:createTables(branch)
+    self:createTables()
     self.db:exec("PRAGMA foreign_keys = ON")
 end
 
 --- helpers
+
+function aports:begins(str, prefix)
+    return str:sub(1,#prefix)==prefix
+end
 
 function aports:split(d,s)
     local r = {}
@@ -120,9 +124,9 @@ function aports:createTables()
     )]]
     self.db:exec(files)
     self.db:exec("create index if not exists 'files_file' on 'files' (file)")
+    self.db:exec("create index if not exists 'files_pid' on 'files' (pid)")
     local fields = {"depends","provides","install_if"}
     local field = [[ create table if not exists '%s' (
-        'branch' TEXT,
         'name' TEXT,
         'version' TEXT,
         'operator' TEXT,
@@ -131,7 +135,8 @@ function aports:createTables()
     for _,v in pairs(fields) do
         self.db:exec(string.format(field,v))
         self.db:exec(string.format("create index if not exists '%s_name' on '%s' (name)", v, v))
-        end
+        self.db:exec(string.format("create index if not exists '%s_pid' on '%s' (pid)", v, v))
+    end
     local maintainer = [[ create table if not exists maintainer (
         'id' INTEGER primary key,
         'name' TEXT, 
@@ -244,8 +249,7 @@ function aports:delPackages(branch, del)
     local stmt = self.db:prepare(sql)
     self.db:exec("begin transaction")
     for _,pkg in pairs(del) do
-        print(inspect(pkg))
-        self:log(string.format("Deleting: %s/%s/%s/%s", branch, pkg.repo, pkg.arch, pkg.name))
+        self:log(string.format("Deleting: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
         stmt:bind_names(pkg)
         stmt:step()
         stmt:reset()
@@ -271,8 +275,10 @@ end
 function aports:addFields(branch, pid, pkg)
     for _,field in ipairs(self.fields) do
         local values = pkg[field] or {}
-        local sql = [[ insert into '%s' ("pid", "branch", "name", "version", "operator") 
-            VALUES (:pid, :branch, :name, :version, :operator) ]]
+        --insert pkg name as a provides in the table.
+        if field == "provides" then table.insert(values, pkg.name) end
+        local sql = [[ insert into '%s' ("pid", "name", "version", "operator")
+            VALUES (:pid, :name, :version, :operator) ]]
         local stmt = self.db:prepare(string.format(sql, field))
         for _,v in pairs(values) do
             local r = self:formatField(v,pid)
@@ -300,8 +306,8 @@ end
 
 function aports:addFiles(branch, pid, apk)
     local files = self:getFilelist(apk)
-    local sql = [[ insert into 'files' ("pid", "branch", "file", "path")
-        VALUES (:pid, :branch, :file, :path) ]]
+    local sql = [[ insert into 'files' ("pid", "file", "path")
+        VALUES (:pid, :file, :path) ]]
     local stmt = self.db:prepare(sql)
     for _,file in pairs(files) do
         file.pid = pid
@@ -349,8 +355,59 @@ function aports:update()
             end
         end
     end
-    self.db:exec("vacuum")
     self:log("Update finished.")
+end
+
+function aports:getDepends(pid)
+    local r = {}
+    local pkg = self:getPackage(pid)
+    if pkg then
+        local sql = [[ SELECT packages.* from depends
+            LEFT JOIN provides ON depends.name = provides.name
+            LEFT JOIN packages ON provides.pid = packages.id
+            WHERE packages.branch = ? AND packages.arch = ? AND depends.pid = ? ]]
+        local stmt = self.db:prepare(sql)
+        stmt:bind_values(pkg.branch, pkg.arch, pid)
+        for row in stmt:nrows(sql) do
+            table.insert(r,row)
+        end
+        return r
+    end
+end
+
+function aports:getProvides(pid)
+    local r = {}
+    local pkg = self:getPackage(pid)
+    if pkg then
+        local sql = [[ SELECT packages.* FROM provides
+            LEFT JOIN depends ON provides.name = depends.name
+            LEFT JOIN packages ON depends.pid = packages.id
+            WHERE branch = ? AND arch = ? AND provides.pid = ? ]]
+        local stmt = self.db:prepare(sql)
+        stmt:bind_values(pkg.branch, pkg.arch, pid)
+        for row in stmt:nrows(sql) do
+            table.insert(r,row)
+        end
+        return r
+    end
+end
+
+function aports:getPackage(pid)
+    local sql = [[ SELECT * FROM packages WHERE id = ? ]]
+    local stmt = self.db:prepare(sql)
+    stmt:bind_values(pid)
+    for row in stmt:nrows(sql) do
+        return row
+    end
+end
+
+function aports:getPackages()
+    local r = {}
+    local sql = [[ SELECT * FROM packages ORDER BY build_time DESC LIMIT 50]]
+    for row in self.db:nrows(sql) do
+        table.insert(r, row)
+    end
+    return r
 end
 
 return aports()
