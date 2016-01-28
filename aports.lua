@@ -190,27 +190,31 @@ function aports:getChanges(branch, repo, arch)
 end
 
 function aports:addPackages(branch, add)
+    for _,pkg in pairs(add) do
+        local apk = string.format("%s/%s/%s/%s/%s-%s.apk",
+            self.mirror, branch, pkg.repo, pkg.arch, pkg.name, pkg.version)
+        if self:fileExists(apk) then
+            self:log(string.format("Adding: %s/%s/%s/%s", branch, pkg.repo, pkg.arch, pkg.name))
+            pkg.maintainer = self:addMaintainer(pkg.maintainer)
+            local pid = self:addHeader(pkg)
+            self:addFields(branch,pid,pkg)
+            self:addFiles(branch,pid,apk)
+        end
+    end
+end
+
+function aports:addHeader(pkg)
     local sql = [[ insert into 'packages' ("name", "version", "description", "url",
         "license", "arch", "branch", "repo", "checksum", "size", "installed_size", "origin", 
         "maintainer", "build_time", "commit") values(:name, :version, :description, 
         :url, :license, :arch, :branch, :repo, :checksum, :size, :installed_size, :origin, 
         :maintainer, :build_time, :commit)]]
     local stmt = self.db:prepare(string.format(sql))
-    self.db:exec("begin transaction")
-    for _,pkg in pairs(add) do
-        pkg.maintainer = self:addMaintainer(pkg.maintainer)
-        self:log(string.format("Adding: %s/%s/%s/%s", branch, pkg.repo, pkg.arch, pkg.name))
-        local apk = string.format("%s/%s/%s/%s/%s-%s.apk",
-            self.mirror, branch, pkg.repo, pkg.arch, pkg.name, pkg.version)
-        stmt:bind_names(pkg)
-        stmt:step()
-        local pid = stmt:last_insert_rowid()
-        self:addFields(branch,pid,pkg)
-        self:addFiles(branch,pid,apk)
-        stmt:reset()
-    end
+    stmt:bind_names(pkg)
+    stmt:step()
+    local pid = stmt:last_insert_rowid()
     stmt:finalize()
-    self.db:exec("commit")
+    return pid
 end
 
 function aports:formatMaintainer(maintainer)
@@ -349,8 +353,10 @@ function aports:update()
                 if self:fileExists(index) and self:indexChanged(index) then
                     self:log(string.format("Updating: %s/%s/%s",branch, repo, arch))
                     local add,del = self:getChanges(branch, repo, arch)
+                    self.db:exec("begin transaction")
                     self:addPackages(branch, add)
                     self:delPackages(branch, del)
+                    self.db:exec("commit")
                 end
             end
         end
