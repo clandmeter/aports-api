@@ -117,6 +117,7 @@ function main()
         {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports}},
         {"^/packages", ApiPackagesRenderer, {aports=aports}},
+        {"favicon.ico", turbo.web.StaticFileHandler, "assets/favicon.ico"},
     }):listen(conf.port)
     local loop = turbo.ioloop.instance()
     loop:add_callback(update)
