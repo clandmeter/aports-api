@@ -340,7 +340,7 @@ function aports:getDepends(pid)
     local r = {}
     local pkg = self:getPackage(pid)
     if pkg then
-        local sql = [[ SELECT packages.* from depends
+        local sql = [[ SELECT DISTINCT packages.* from depends
             LEFT JOIN provides ON depends.name = provides.name
             LEFT JOIN packages ON provides.pid = packages.id
             WHERE packages.branch = ? AND packages.arch = ? AND depends.pid = ? ]]
@@ -357,7 +357,7 @@ function aports:getProvides(pid)
     local r = {}
     local pkg = self:getPackage(pid)
     if pkg then
-        local sql = [[ SELECT packages.* FROM provides
+        local sql = [[ SELECT DISTINCT packages.* FROM provides
             LEFT JOIN depends ON provides.name = depends.name
             LEFT JOIN packages ON depends.pid = packages.id
             WHERE branch = ? AND arch = ? AND provides.pid = ? ]]
