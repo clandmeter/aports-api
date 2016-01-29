@@ -113,6 +113,7 @@ function main()
     local aports = aports(conf)
     local update = function() aports:update() end
     turbo.web.Application({
+        {"^/$", turbo.web.RedirectHandler, "/packages"},
         {"^/packages/(.*)/relationships/required_by$", ApiRequredByRenderer, {aports=aports}},
         {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports}},
