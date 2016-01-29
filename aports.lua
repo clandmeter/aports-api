@@ -65,14 +65,6 @@ function aports:indexFormat(k)
     return k and f[k] or f
 end
 
-function aports:jsonFormat(k)
-    local f = self:indexFormat()
-    f.f = "files"
-    f.r = "repo"
-    f.b = "branch"
-    return k and f[k] or f
-end
-
 function aports:createTables()
     local packages = [[ create table if not exists 'packages' (
         'id' INTEGER primary key,
