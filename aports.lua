@@ -1,5 +1,6 @@
 local sqlite    = require("lsqlite3")
 local inspect   = require("inspect")
+
 local aports    = class("aports")
 
 function aports:initialize()
