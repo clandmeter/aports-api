@@ -3,34 +3,10 @@ local inspect   = require("inspect")
 
 local aports    = class("aports")
 
-function aports:initialize()
+function aports:initialize(conf)
     self.checksum = {}
-end
-
-function aports:setRepositories(branches, repos, archs)
-    self.branches = branches or {}
-    self.repos = repos or {}
-    self.archs = archs or {}
-end
-
-function aports:setFields(fields)
-    self.fields = fields or {}
-end
-
-function aports:setMirror(mirror)
-    self.mirror = mirror
-end
-
-function aports:setUri(uri)
-    self.uri = uri
-end
-
-function aports:logging(log)
-    self.logging = log
-end
-
-function aports:openDB()
-    self.db = sqlite.open("aports.db")
+    self.conf = conf
+    self.db = sqlite.open(conf.db.path)
     self:createTables()
     self.db:exec("PRAGMA foreign_keys = ON")
 end
@@ -48,8 +24,8 @@ function aports:split(d,s)
 end
 
 function aports:log(msg)
-    if self.logging then
-        if self.logging == "syslog" then
+    if self.conf.logging then
+        if self.conf.logging == "syslog" then
             os.execute("logger "..msg)
         else
             print(msg)
@@ -127,14 +103,13 @@ function aports:createTables()
     self.db:exec(files)
     self.db:exec("create index if not exists 'files_file' on 'files' (file)")
     self.db:exec("create index if not exists 'files_pid' on 'files' (pid)")
-    local fields = {"depends","provides","install_if"}
     local field = [[ create table if not exists '%s' (
         'name' TEXT,
         'version' TEXT,
         'operator' TEXT,
         'pid' INTEGER REFERENCES packages(id) on delete cascade
     )]]
-    for _,v in pairs(fields) do
+    for _,v in pairs(self.conf.db.fields) do
         self.db:exec(string.format(field,v))
         self.db:exec(string.format("create index if not exists '%s_name' on '%s' (name)", v, v))
         self.db:exec(string.format("create index if not exists '%s_pid' on '%s' (pid)", v, v))
@@ -148,10 +123,10 @@ function aports:createTables()
     self.db:exec("create index if not exists 'maintainer_name' on maintainer (name)")
 end
 
-function aports:getIndex(branch, repo, arch) 
+function aports:getIndex(branch, repo, arch)
     local r,i = {},{}
     local index = string.format("%s/%s/%s/%s/APKINDEX.tar.gz",
-        self.mirror, branch, repo, arch)
+        self.conf.mirror, branch, repo, arch)
     local f = io.popen(string.format("tar -Ozx -f '%s' APKINDEX", index))
     for line in f:lines() do
         if (line ~= "") then
@@ -194,7 +169,7 @@ end
 function aports:addPackages(branch, add)
     for _,pkg in pairs(add) do
         local apk = string.format("%s/%s/%s/%s/%s-%s.apk",
-            self.mirror, branch, pkg.repo, pkg.arch, pkg.name, pkg.version)
+            self.conf.mirror, branch, pkg.repo, pkg.arch, pkg.name, pkg.version)
         if self:fileExists(apk) then
             self:log(string.format("Adding: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
             pkg.maintainer = self:addMaintainer(pkg.maintainer)
@@ -349,11 +324,11 @@ function aports:indexChanged(index)
 end
 
 function aports:update()
-    for _,branch in pairs(self.branches) do
-        for _,repo in pairs(self.repos) do
-            for _,arch in pairs(self.archs) do
+    for _,branch in pairs(self.conf.branches) do
+        for _,repo in pairs(self.conf.repos) do
+            for _,arch in pairs(self.conf.archs) do
                 local index = string.format("%s/%s/%s/%s/APKINDEX.tar.gz", 
-                    self.mirror, branch, repo, arch)
+                    self.conf.mirror, branch, repo, arch)
                 if self:fileExists(index) and self:indexChanged(index) then
                     self:log(string.format("Updating: %s/%s/%s",branch, repo, arch))
                     local add,del = self:getChanges(branch, repo, arch)
@@ -420,4 +395,4 @@ function aports:getPackages()
     return r
 end
 
-return aports()
+return aports
