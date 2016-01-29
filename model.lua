@@ -70,6 +70,17 @@ function model:requiredBy(pkgs, pid)
     return r
 end
 
+function model:depends(pkgs, pid)
+    local r = {}
+    r.links = {}
+    r.links.self = string.format("%s/packages/%s/relationships/depends", self.conf.uri, pid)
+    r.data = {}
+    for _,pkg in pairs(pkgs) do
+        table.insert(r.data, self:packageModel(pkg))
+    end
+    return r
+end
+
 function model:files(files)
     local r = {}
     for _,file in ipairs(files) do
