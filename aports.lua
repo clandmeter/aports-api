@@ -94,6 +94,7 @@ function aports:createTables()
     ) ]]
     self.db:exec(packages)
     self.db:exec("create index if not exists 'packages_name' on 'packages' (name)")
+    self.db:exec("create index if not exists 'packages_maintainer' on 'packages' (maintainer)")
     local files = [[ create table if not exists 'files' (
         'branch' TEXT,
         'file' TEXT,
@@ -256,7 +257,7 @@ function aports:formatField(v, pid)
 end
 
 function aports:addFields(branch, pid, pkg)
-    for _,field in ipairs(self.fields) do
+    for _,field in ipairs(self.conf.db.fields) do
         local values = pkg[field] or {}
         --insert pkg name as a provides in the table.
         if field == "provides" then table.insert(values, pkg.name) end
@@ -378,7 +379,9 @@ function aports:getProvides(pid)
 end
 
 function aports:getPackage(pid)
-    local sql = [[ SELECT * FROM packages WHERE id = ? ]]
+    local sql = [[ SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
+        LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+        WHERE packages.id = ? ]]
     local stmt = self.db:prepare(sql)
     stmt:bind_values(pid)
     for row in stmt:nrows(sql) do
@@ -388,7 +391,9 @@ end
 
 function aports:getPackages()
     local r = {}
-    local sql = [[ SELECT * FROM packages ORDER BY build_time DESC LIMIT 50]]
+    local sql = [[ SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
+        LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+        ORDER BY build_time DESC LIMIT 50 ]]
     for row in self.db:nrows(sql) do
         table.insert(r, row)
     end
