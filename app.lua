@@ -62,6 +62,17 @@ function ApiRequredByRenderer:get(pid)
     end
 end
 
+local ApiFilesRenderer = class("ApiFilesRenderer", turbo.web.RequestHandler)
+
+function ApiFilesRenderer:get(pid)
+    local files = self.options.aports:getFiles(pid)
+    if next(files) then
+        local json = self.options.model:files(files)
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    end
+end
+
 function main()
     local aports = aports(conf)
     local format = aports:indexFormat()
@@ -69,6 +80,7 @@ function main()
     local update = function() aports:update() end
     turbo.web.Application({
         {"^/$", turbo.web.RedirectHandler, "/packages"},
+        {"^/packages/(.*)/files$", ApiFilesRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)/relationships/required_by$", ApiRequredByRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports,model=model}},

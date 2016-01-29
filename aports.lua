@@ -392,4 +392,16 @@ function aports:getPackages()
     return r
 end
 
+function aports:getFiles(pid)
+    local r = {}
+    local sql = [[ SELECT file, path FROM files WHERE pid = ? ]]
+    local stmt = self.db:prepare(sql)
+    stmt:bind_values(pid)
+    for row in stmt:nrows(sql) do
+        table.insert(r, row)
+    end
+    return r
+end
+
+
 return aports
