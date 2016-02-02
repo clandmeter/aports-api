@@ -51,15 +51,15 @@ function model:package(pkg, pid)
 end
 
 function model:links(qty, pager)
-    local last = math.floor(qty/pager.limit)
-    local next = pager.number+1 > last and last or pager.number+1
-    local prev = pager.number-1 < 1 and 1 or pager.number-1
-    local r = {}
+    local t,r = {},{}
+    t.first = 1
+    t.last = math.floor(qty/pager.limit)
+    t.next = pager.number+1 > t.last and t.last or pager.number+1
+    t.prev = pager.number-1 < 1 and 1 or pager.number-1
     r.self = string.format("%s%s", self.conf.uri, pager.uri)
-    r.first = string.format("%s/packages?page[number]=1",self.conf.uri)
-    r.prev = string.format("%s/packages?page[number]=%s",self.conf.uri,prev)
-    r.next = string.format("%s/packages?page[number]=%s",self.conf.uri,next)
-    r.last = string.format("%s/packages?page[number]=%s",self.conf.uri,last)
+    for k,v in pairs(t) do
+        r[k] = string.format("%s/packages?page[number]=%s",self.conf.uri, v)
+    end
     return r
 end
 
