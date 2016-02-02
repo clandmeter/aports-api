@@ -55,8 +55,10 @@ function getPagerArguments(obj, max)
         local arg = obj:get_argument(string.format("page[%s]",v), false, true)
         if arg then s[v] = arg end
     end
+    r.number = s.number or 1
     r.limit = (s.size and tonumber(s.size) <= conf.pager.limit) and s.size or conf.pager.limit
-    r.offset = s.number and s.number*r.limit or 0
+    r.offset = r.number+1 and r.number*r.limit or 0
+    r.uri = obj.request.uri
     return r
 end
 
@@ -87,8 +89,9 @@ function ApiPackagesRenderer:get()
     end
     local pager = getPagerArguments(self)
     local pkgs = self.options.aports:getPackages(filter, sort, pager)
+    local qty = self.options.aports:getRowCount("packages")
     if next(pkgs) then
-        local json = self.options.model:packages(pkgs)
+        local json = self.options.model:packages(pkgs, qty, pager)
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else

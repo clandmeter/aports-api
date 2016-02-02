@@ -442,6 +442,13 @@ function aports:getPackages(filter, sort, pager)
     return r
 end
 
+function aports:getRowCount(table)
+    local sql = string.format("SELECT count(*) as qty from %s", table)
+    for row in self.db:nrows(sql) do
+        return row.qty
+    end
+end
+
 function aports:getFiles(pid)
     local r = {}
     local sql = [[ SELECT file, path FROM files WHERE pid = ? ]]

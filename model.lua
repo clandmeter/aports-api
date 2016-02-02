@@ -50,10 +50,22 @@ function model:package(pkg, pid)
     return r
 end
 
-function model:packages(pkgs)
+function model:links(qty, pager)
+    local last = math.floor(qty/pager.limit)
+    local next = pager.number+1 > last and last or pager.number+1
+    local prev = pager.number-1 < 1 and 1 or pager.number-1
     local r = {}
-    r.links = {}
-    r.links.self = string.format("%s/packages", self.conf.uri) 
+    r.self = string.format("%s%s", self.conf.uri, pager.uri)
+    r.first = string.format("%s/packages?page[number]=1",self.conf.uri)
+    r.prev = string.format("%s/packages?page[number]=%s",self.conf.uri,prev)
+    r.next = string.format("%s/packages?page[number]=%s",self.conf.uri,next)
+    r.last = string.format("%s/packages?page[number]=%s",self.conf.uri,last)
+    return r
+end
+
+function model:packages(pkgs, qty, pager)
+    local r = {}
+    r.links = self:links(qty, pager)
     r.data = {}
     for _,pkg in pairs(pkgs) do
         table.insert(r.data, self:packageModel(pkg))
