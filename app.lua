@@ -5,6 +5,60 @@ local aports    = require("aports")
 local cjson     = require("cjson")
 local model     = require("model")
 
+function is_in(needle,haystack)
+    if type(needle) == "string" and type(haystack) == "table" then
+        for k,v in pairs(haystack) do
+            if v == needle then return true end
+        end
+    end
+end
+
+function getFilterArguments(obj)
+    local r = {}
+    local format = obj.options.model:jsonFormat()
+    for k,v in pairs(format) do
+        local filter = string.format("filter[%s]",v)
+        local arg = obj:get_argument(filter, false, true)
+        if arg then r[v] = arg end
+    end
+    return r
+end
+
+function getSortArguments(obj)
+    local r = {}
+    local format = obj.options.model:jsonFormat()
+    local sort = obj:get_argument("sort", false, true)
+    if sort then
+        -- check if we want to invert the sort order
+        if sort:match("^-") then
+            sort = sort:sub(2)
+            r.order = "DESC"
+        end
+        -- check if column exists
+        for i in sort:gmatch('[^,]+') do
+            if not is_in(i,format) then
+                return false
+            end
+        end
+        r.sort = sort
+        r.order = r.order or "ASC"
+    else
+        r.sort = conf.sort.default
+        r.order = "ASC"
+    end
+    return r
+end
+
+function getPagerArguments(obj, max)
+    local r,s = {},{}
+    for k,v in ipairs(conf.pager.options) do
+        local arg = obj:get_argument(string.format("page[%s]",v), false, true)
+        if arg then s[v] = arg end
+    end
+    r.limit = (s.size and tonumber(s.size) <= conf.pager.limit) and s.size or conf.pager.limit
+    r.offset = s.number and s.number*r.limit or 0
+    return r
+end
 
 ---
 -- Turbo Request handlers
@@ -26,7 +80,13 @@ end
 local ApiPackagesRenderer = class("ApiPackagesRenderer", turbo.web.RequestHandler)
 
 function ApiPackagesRenderer:get()
-    local pkgs = self.options.aports:getPackages()
+    local filter = getFilterArguments(self)
+    local sort = getSortArguments(self)
+    if not sort then
+        error(turbo.web.HTTPError(400, "400 Bad request."))
+    end
+    local pager = getPagerArguments(self)
+    local pkgs = self.options.aports:getPackages(filter, sort, pager)
     if next(pkgs) then
         local json = self.options.model:packages(pkgs)
         self:add_header("Content-Type", "application/vnd.api+json")
@@ -41,7 +101,7 @@ local ApiDependsRenderer = class("ApiDependsRenderer", turbo.web.RequestHandler)
 function ApiDependsRenderer:get(pid)
     local pkgs = self.options.aports:getDepends(pid)
     if next(pkgs) then
-        local json = self.options.model:depends(pkgs)
+        local json = self.options.model:fields(pkgs, pid, "depends")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -49,16 +109,27 @@ function ApiDependsRenderer:get(pid)
     end
 end
 
-local ApiRequredByRenderer = class("ApiRequredByRenderer", turbo.web.RequestHandler)
+local ApiProvidesRenderer = class("ApiProvidesRenderer", turbo.web.RequestHandler)
 
-function ApiRequredByRenderer:get(pid)
+function ApiProvidesRenderer:get(pid)
     local pkgs = self.options.aports:getProvides(pid)
     if next(pkgs) then
-        local json = self.options.model:requiredBy(pkgs, pid)
+        local json = self.options.model:fields(pkgs, pid, "provides")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
         error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
+local ApiOriginsRenderer = class("ApiOriginsRenderer", turbo.web.RequestHandler)
+
+function ApiOriginsRenderer:get(pid)
+    local pkgs = self.options.aports:getOrigins(pid)
+    if next(pkgs) then
+        local json = self.options.model:fields(pkgs, pid, "origins")
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
     end
 end
 
@@ -73,6 +144,7 @@ function ApiFilesRenderer:get(pid)
     end
 end
 
+
 function main()
     local aports = aports(conf)
     local format = aports:indexFormat()
@@ -81,7 +153,8 @@ function main()
     turbo.web.Application({
         {"^/$", turbo.web.RedirectHandler, "/packages"},
         {"^/packages/(.*)/files$", ApiFilesRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/required_by$", ApiRequredByRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/origins$", ApiOriginsRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/provides$", ApiProvidesRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports,model=model}},
         {"^/packages", ApiPackagesRenderer, {aports=aports,model=model}},
@@ -89,6 +162,7 @@ function main()
     }):listen(conf.port)
     local loop = turbo.ioloop.instance()
     loop:add_callback(update)
+    --loop:set_interval(60000*conf.update, update)
     loop:start()
 end
 

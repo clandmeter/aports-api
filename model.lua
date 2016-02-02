@@ -1,3 +1,5 @@
+local inspect = require("inspect")
+
 local model = class("model")
 
 
@@ -32,9 +34,12 @@ function model:packageModel(pkg)
     m.relationships.depends = {}
     m.relationships.depends.links = {}
     m.relationships.depends.links.self = string.format("%s/packages/%s/relationships/depends", self.conf.uri, pkg.id)
-    m.relationships.required_by = {}
-    m.relationships.required_by.links = {}
-    m.relationships.required_by.links.self = string.format("%s/packages/%s/relationships/required_by", self.conf.uri, pkg.id)
+    m.relationships.provides = {}
+    m.relationships.provides.links = {}
+    m.relationships.provides.links.self = string.format("%s/packages/%s/relationships/provides", self.conf.uri, pkg.id)
+    m.relationships.origins = {}
+    m.relationships.origins.links = {}
+    m.relationships.origins.links.self = string.format("%s/packages/%s/relationships/origins", self.conf.uri, pkg.id)
     m.links = {}
     m.links.self = string.format("%s/packages/%s", self.conf.uri, pkg.id)
     return m
@@ -59,21 +64,10 @@ function model:packages(pkgs)
     return r
 end
 
-function model:requiredBy(pkgs, pid)
+function model:fields(pkgs, pid, type)
     local r = {}
     r.links = {}
-    r.links.self = string.format("%s/packages/%s/relationships/required_by", self.conf.uri, pid)
-    r.data = {}
-    for _,pkg in pairs(pkgs) do
-        table.insert(r.data, self:packageModel(pkg))
-    end
-    return r
-end
-
-function model:depends(pkgs, pid)
-    local r = {}
-    r.links = {}
-    r.links.self = string.format("%s/packages/%s/relationships/depends", self.conf.uri, pid)
+    r.links.self = string.format("%s/packages/%s/relationships/%s", self.conf.uri, pid, type)
     r.data = {}
     for _,pkg in pairs(pkgs) do
         table.insert(r.data, self:packageModel(pkg))

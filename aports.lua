@@ -23,6 +23,18 @@ function aports:split(d,s)
     return r
 end
 
+function aports:mergeTables(...)
+    local r = {}
+    for k,v in ipairs({...}) do
+        if type(v) == "table" then
+            for k,v in pairs(v) do
+                r[k] = v
+            end
+        end
+    end
+    return r
+end
+
 function aports:log(msg)
     if self.conf.logging then
         if self.conf.logging == "syslog" then
@@ -109,7 +121,7 @@ function aports:createTables()
     end
     local maintainer = [[ create table if not exists maintainer (
         'id' INTEGER primary key,
-        'name' TEXT, 
+        'name' TEXT,
         'email' TEXT
     ) ]]
     self.db:exec(maintainer)
@@ -142,7 +154,7 @@ function aports:getChanges(branch, repo, arch)
     local del = {}
     local add = self:getIndex(branch, repo, arch)
     local sql = [[SELECT branch, repo, arch, name,version FROM 'packages'
-        WHERE branch = ? 
+        WHERE branch = ?
         AND repo = ?
         AND arch = ?
     ]]
@@ -177,9 +189,9 @@ end
 
 function aports:addHeader(pkg)
     local sql = [[ insert into 'packages' ("name", "version", "description", "url",
-        "license", "arch", "branch", "repo", "checksum", "size", "installed_size", "origin", 
-        "maintainer", "build_time", "commit") values(:name, :version, :description, 
-        :url, :license, :arch, :branch, :repo, :checksum, :size, :installed_size, :origin, 
+        "license", "arch", "branch", "repo", "checksum", "size", "installed_size", "origin",
+        "maintainer", "build_time", "commit") values(:name, :version, :description,
+        :url, :license, :arch, :branch, :repo, :checksum, :size, :installed_size, :origin,
         :maintainer, :build_time, :commit)]]
     local stmt = self.db:prepare(string.format(sql))
     stmt:bind_names(pkg)
@@ -205,7 +217,7 @@ end
 function aports:addMaintainer(maintainer)
     local m = self:formatMaintainer(maintainer)
     if m then
-        local sql = [[ insert or replace into maintainer ('id', 'name', 'email') 
+        local sql = [[ insert or replace into maintainer ('id', 'name', 'email')
             VALUES ((SELECT id FROM maintainer WHERE name = :name AND email = :email),
             :name, :email) ]]
         local stmt = self.db:prepare(sql)
@@ -221,7 +233,7 @@ end
 function aports:delPackages(branch, del)
     local sql = [[ delete FROM 'packages' WHERE "branch" = :branch
         AND "repo" = :repo AND "arch" = :arch AND "name" = :name
-        AND "version" = :version ]] 
+        AND "version" = :version ]]
     local stmt = self.db:prepare(sql)
     self.db:exec("begin transaction")
     for _,pkg in pairs(del) do
@@ -320,7 +332,7 @@ function aports:update()
     for _,branch in pairs(self.conf.branches) do
         for _,repo in pairs(self.conf.repos) do
             for _,arch in pairs(self.conf.archs) do
-                local index = string.format("%s/%s/%s/%s/APKINDEX.tar.gz", 
+                local index = string.format("%s/%s/%s/%s/APKINDEX.tar.gz",
                     self.conf.mirror, branch, repo, arch)
                 if self:fileExists(index) and self:indexChanged(index) then
                     self:log(string.format("Updating: %s/%s/%s",branch, repo, arch))
@@ -340,10 +352,12 @@ function aports:getDepends(pid)
     local r = {}
     local pkg = self:getPackage(pid)
     if pkg then
-        local sql = [[ SELECT DISTINCT packages.* from depends
+        local sql = [[ SELECT DISTINCT packages.*, maintainer.name as mname, maintainer.email as memail FROM depends
             LEFT JOIN provides ON depends.name = provides.name
             LEFT JOIN packages ON provides.pid = packages.id
-            WHERE packages.branch = ? AND packages.arch = ? AND depends.pid = ? ]]
+            LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+            WHERE packages.branch = ? AND packages.arch = ? AND depends.pid = ?
+            LIMIT 50 ]]
         local stmt = self.db:prepare(sql)
         stmt:bind_values(pkg.branch, pkg.arch, pid)
         for row in stmt:nrows(sql) do
@@ -357,10 +371,12 @@ function aports:getProvides(pid)
     local r = {}
     local pkg = self:getPackage(pid)
     if pkg then
-        local sql = [[ SELECT DISTINCT packages.* FROM provides
+        local sql = [[ SELECT DISTINCT packages.*, maintainer.name as mname, maintainer.email as memail FROM provides
             LEFT JOIN depends ON provides.name = depends.name
             LEFT JOIN packages ON depends.pid = packages.id
-            WHERE branch = ? AND arch = ? AND provides.pid = ? ]]
+            LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+            WHERE branch = ? AND arch = ? AND provides.pid = ?
+            LIMIT 50 ]]
         local stmt = self.db:prepare(sql)
         stmt:bind_values(pkg.branch, pkg.arch, pid)
         for row in stmt:nrows(sql) do
@@ -381,12 +397,27 @@ function aports:getPackage(pid)
     end
 end
 
-function aports:getPackages()
+
+function aports:whereQuery(values,tname)
     local r = {}
-    local sql = [[ SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
+    for field in pairs(values) do
+        tfield = table and string.format("%s.%s",tname, field) or field
+        table.insert(r, string.format(" %s GLOB :%s ", tfield, field))
+    end
+    return next(r) and string.format("WHERE %s", table.concat(r, " AND ")) or ""
+end
+
+function aports:getPackages(filter, sort, pager)
+    local r = {}
+    local bind = self:mergeTables(filter,sort,pager)
+    local where = self:whereQuery(filter, "packages")
+    local sql = string.format([[
+        SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
         LEFT JOIN maintainer ON packages.maintainer = maintainer.id
-        ORDER BY build_time DESC LIMIT 50 ]]
-    for row in self.db:nrows(sql) do
+        %s ORDER BY %s %s LIMIT :limit OFFSET :offset ]], where, sort.sort, sort.order)
+    local stmt = self.db:prepare(sql)
+    stmt:bind_names(bind)
+    for row in stmt:nrows(sql) do
         table.insert(r, row)
     end
     return r
@@ -401,6 +432,22 @@ function aports:getFiles(pid)
         table.insert(r, row)
     end
     return r
+end
+
+function aports:getOrigins(pid)
+    local r = {}
+    local pkg = self:getPackage(pid)
+    if pkg then
+        local sql = [[ SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
+            LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+            WHERE packages.origin = :origin AND branch = :branch AND repo = :repo AND arch = :arch ]]
+        local stmt = self.db:prepare(sql)
+        stmt:bind_names(pkg)
+        for row in stmt:nrows(sql) do
+            table.insert(r, row)
+        end
+        return r
+    end
 end
 
 
