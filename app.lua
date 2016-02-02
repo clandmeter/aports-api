@@ -109,6 +109,19 @@ function ApiDependsRenderer:get(pid)
     end
 end
 
+local ApiInstallIfRenderer = class("ApiInstallIfRenderer", turbo.web.RequestHandler)
+
+function ApiInstallIfRenderer:get(pid)
+    local pkgs = self.options.aports:getInstallIf(pid)
+    if next(pkgs) then
+        local json = self.options.model:fields(pkgs, pid, "install_if")
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
 local ApiProvidesRenderer = class("ApiProvidesRenderer", turbo.web.RequestHandler)
 
 function ApiProvidesRenderer:get(pid)
@@ -156,13 +169,14 @@ function main()
         {"^/packages/(.*)/relationships/origins$", ApiOriginsRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)/relationships/provides$", ApiProvidesRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/install_if$", ApiInstallIfRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports,model=model}},
         {"^/packages", ApiPackagesRenderer, {aports=aports,model=model}},
         {"favicon.ico", turbo.web.StaticFileHandler, "assets/favicon.ico"},
     }):listen(conf.port)
     local loop = turbo.ioloop.instance()
-    loop:add_callback(update)
-    --loop:set_interval(60000*conf.update, update)
+    --loop:add_callback(update)
+    loop:set_interval(60000*conf.update, update)
     loop:start()
 end
 

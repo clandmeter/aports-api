@@ -367,6 +367,25 @@ function aports:getDepends(pid)
     end
 end
 
+function aports:getInstallIf(pid)
+    local r = {}
+    local pkg = self:getPackage(pid)
+    if pkg then
+        local sql = [[ SELECT DISTINCT packages.*, maintainer.name as mname, maintainer.email as memail FROM install_if
+            LEFT JOIN provides ON install_if.name = provides.name
+            LEFT JOIN packages ON provides.pid = packages.id
+            LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+            WHERE packages.branch = ? AND packages.arch = ? AND install_if.pid = ?
+            LIMIT 50 ]]
+        local stmt = self.db:prepare(sql)
+        stmt:bind_values(pkg.branch, pkg.arch, pid)
+        for row in stmt:nrows(sql) do
+            table.insert(r,row)
+        end
+        return r
+    end
+end
+
 function aports:getProvides(pid)
     local r = {}
     local pkg = self:getPackage(pid)
@@ -449,6 +468,5 @@ function aports:getOrigins(pid)
         return r
     end
 end
-
 
 return aports
