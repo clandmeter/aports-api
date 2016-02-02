@@ -409,7 +409,7 @@ end
 
 function aports:getPackages(filter, sort, pager)
     local r = {}
-    local bind = self:mergeTables(filter,sort,pager)
+    local bind = self:mergeTables(filter,pager)
     local where = self:whereQuery(filter, "packages")
     local sql = string.format([[
         SELECT packages.*, maintainer.name as mname, maintainer.email as memail FROM packages
