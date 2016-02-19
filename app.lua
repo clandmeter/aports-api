@@ -37,7 +37,7 @@ function getSortArguments(obj)
         -- check if column exists
         for i in sort:gmatch('[^,]+') do
             if not is_in(i,format) then
-                return false
+                error(turbo.web.HTTPError(400, "400 Bad request."))
             end
         end
         r.sort = sort
@@ -49,15 +49,15 @@ function getSortArguments(obj)
     return r
 end
 
-function getPagerArguments(obj, max)
+function getPagerArguments(obj)
     local r,s = {},{}
     for k,v in ipairs(conf.pager.options) do
         local arg = obj:get_argument(string.format("page[%s]",v), false, true)
         if arg then s[v] = arg end
     end
-    r.number = s.number or 1
+    r.number = (tonumber(s.number) or 1) > 0 and s.number or 1
     r.limit = (s.size and tonumber(s.size) <= conf.pager.limit) and s.size or conf.pager.limit
-    r.offset = r.number+1 and r.number*r.limit or 0
+    r.offset = r.number and (r.number-1)*r.limit or 0
     r.uri = obj.request.uri
     return r
 end
@@ -82,16 +82,14 @@ end
 local ApiPackagesRenderer = class("ApiPackagesRenderer", turbo.web.RequestHandler)
 
 function ApiPackagesRenderer:get()
-    local filter = getFilterArguments(self)
     local sort = getSortArguments(self)
-    if not sort then
-        error(turbo.web.HTTPError(400, "400 Bad request."))
-    end
+    local filter = getFilterArguments(self)
     local pager = getPagerArguments(self)
     local pkgs = self.options.aports:getPackages(filter, sort, pager)
-    local qty = self.options.aports:getRowCount("packages")
+    local args = self.request.arguments or {}
     if next(pkgs) then
-        local json = self.options.model:packages(pkgs, qty, pager)
+        pager.qty = self.options.aports:getRowCount("packages")
+        local json = self.options.model:packages(pkgs, pager, args)
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -99,12 +97,12 @@ function ApiPackagesRenderer:get()
     end
 end
 
-local ApiDependsRenderer = class("ApiDependsRenderer", turbo.web.RequestHandler)
+local ApiRelationshipsDependsRenderer = class("ApiRelationshipsDependsRenderer", turbo.web.RequestHandler)
 
-function ApiDependsRenderer:get(pid)
+function ApiRelationshipsDependsRenderer:get(pid)
     local pkgs = self.options.aports:getDepends(pid)
     if next(pkgs) then
-        local json = self.options.model:fields(pkgs, pid, "depends")
+        local json = self.options.model:relationshipsPackages(pkgs, pid, "depends")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -112,12 +110,12 @@ function ApiDependsRenderer:get(pid)
     end
 end
 
-local ApiInstallIfRenderer = class("ApiInstallIfRenderer", turbo.web.RequestHandler)
+local ApiRelationshipsInstallIfRenderer = class("ApiRelationshipsInstallIfRenderer", turbo.web.RequestHandler)
 
-function ApiInstallIfRenderer:get(pid)
+function ApiRelationshipsInstallIfRenderer:get(pid)
     local pkgs = self.options.aports:getInstallIf(pid)
     if next(pkgs) then
-        local json = self.options.model:fields(pkgs, pid, "install_if")
+        local json = self.options.model:relationshipsPackages(pkgs, pid, "install_if")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -125,12 +123,12 @@ function ApiInstallIfRenderer:get(pid)
     end
 end
 
-local ApiProvidesRenderer = class("ApiProvidesRenderer", turbo.web.RequestHandler)
+local ApiRelationshipsProvidesRenderer = class("ApiRelationshipsProvidesRenderer", turbo.web.RequestHandler)
 
-function ApiProvidesRenderer:get(pid)
+function ApiRelationshipsProvidesRenderer:get(pid)
     local pkgs = self.options.aports:getProvides(pid)
     if next(pkgs) then
-        local json = self.options.model:fields(pkgs, pid, "provides")
+        local json = self.options.model:relationshipsPackages(pkgs, pid, "provides")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -138,25 +136,68 @@ function ApiProvidesRenderer:get(pid)
     end
 end
 
-local ApiOriginsRenderer = class("ApiOriginsRenderer", turbo.web.RequestHandler)
+local ApiRelationshipsOriginsRenderer = class("ApiRelationshipsOriginsRenderer", turbo.web.RequestHandler)
 
-function ApiOriginsRenderer:get(pid)
+function ApiRelationshipsOriginsRenderer:get(pid)
     local pkgs = self.options.aports:getOrigins(pid)
     if next(pkgs) then
-        local json = self.options.model:fields(pkgs, pid, "origins")
+        local json = self.options.model:relationshipsPackages(pkgs, pid, "origins")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
     end
 end
 
-local ApiFilesRenderer = class("ApiFilesRenderer", turbo.web.RequestHandler)
+local ApiRelationshipsPackagesRenderer = class("ApiRelationshipsPackagesRenderer", turbo.web.RequestHandler)
 
-function ApiFilesRenderer:get(pid)
-    local files = self.options.aports:getFiles(pid)
-    if next(files) then
-        local json = self.options.model:files(files)
+function ApiRelationshipsPackagesRenderer:get(pid)
+    local pkg = self.options.aports:getPackage(pid)
+    if pkg then
+        local json = self.options.model:relationshipsContents(pkg, pid, "packages")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
+local ApiRelationshipsContentRenderer = class("ApiRelationshipsContentRenderer", turbo.web.RequestHandler)
+
+function ApiRelationshipsContentRenderer:get(pid)
+    local files = self.options.aports:getFiles(pid)
+    if next(files) then
+        local json = self.options.model:relationshipsContents(files, pid, "contents")
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
+local ApiContentRenderer = class("ApiContentRenderer", turbo.web.RequestHandler)
+
+function ApiContentRenderer:get(pid)
+    local files = self.options.aports:getFiles(pid)
+    if next(files) then
+        local json = self.options.model:contents(pid, files)
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
+local ApiContentRenderer = class("ApiContentRenderer", turbo.web.RequestHandler)
+
+function ApiContentRenderer:get(id)
+    local cnt = self.options.aports:getContents(id)
+    if cnt then
+        local json = self.options.model:contents(cnt)
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
     end
 end
 
@@ -168,12 +209,15 @@ function main()
     local update = function() aports:update() end
     turbo.web.Application({
         {"^/$", turbo.web.RedirectHandler, "/packages"},
-        {"^/packages/(.*)/files$", ApiFilesRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/origins$", ApiOriginsRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/provides$", ApiProvidesRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/depends$", ApiDependsRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/install_if$", ApiInstallIfRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/contents$", ApiRelationshipsContentRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/origins$", ApiRelationshipsOriginsRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/provides$", ApiRelationshipsProvidesRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/depends$", ApiRelationshipsDependsRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/install_if$", ApiRelationshipsInstallIfRenderer, {aports=aports,model=model}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports,model=model}},
+        {"^/contents/(.*)/relationships/packages$", ApiRelationshipsPackagesRenderer, {aports=aports,model=model}},
+        {"^/contents/(.*)$", ApiContentRenderer, {aports=aports,model=model}},
+        {"^/contents", ApiContentsRenderer, {aports=aports,model=model}},
         {"^/packages", ApiPackagesRenderer, {aports=aports,model=model}},
         {"favicon.ico", turbo.web.StaticFileHandler, "assets/favicon.ico"},
     }):listen(conf.port)

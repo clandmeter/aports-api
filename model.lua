@@ -16,7 +16,31 @@ function model:jsonFormat(k)
     return k and f[k] or f
 end
 
-function model:attributesModel(pkg)
+---
+-- package model
+---
+
+function model:package(pkg, pid)
+    local r = {}
+    r.links = {}
+    r.links.self = string.format("%s/packages/%s", self.conf.uri, pid)
+    r.data = self:packageData(pkg)
+    return r
+end
+
+function model:packageData(pkg)
+    local m = {}
+    m.type = "packages"
+    m.id = tostring(pkg.id)
+    pkg.maintainer = pkg.maintainer and string.format("%s <%s>", pkg.mname, pkg.memail) or nil
+    m.attributes = self:packageAttributes(pkg)
+    m.relationships = self:packagesRelationships(pkg.id)
+    m.links = {}
+    m.links.self = string.format("%s/packages/%s", self.conf.uri, pkg.id)
+    return m
+end
+
+function model:packageAttributes(pkg)
     local r = {}
     for _,v in pairs(self:jsonFormat()) do
         r[v] = pkg[v]
@@ -24,71 +48,147 @@ function model:attributesModel(pkg)
     return r
 end
 
-function model:packageModel(pkg)
+function model:packagesRelationships(pid)
     local m = {}
-    m.type = "packages"
-    m.id = pkg.id
-    pkg.maintainer = pkg.maintainer and string.format("%s <%s>", pkg.mname, pkg.memail) or nil
-    m.attributes = self:attributesModel(pkg)
-    local relationships = {"depends", "provides", "install_if", "origins"}
-    m.relationships = {}
+    local relationships = {"depends", "provides", "install_if", "origins", "contents"}
     for _,r in ipairs(relationships) do
-        m.relationships[r] = {}
-        m.relationships[r].links = {}
-        m.relationships[r].links.self = string.format("%s/packages/%s/relationships/%s", self.conf.uri, pkg.id, r)
+        m[r] = {}
+        m[r].links = {}
+        m[r].links.self = string.format("%s/packages/%s/relationships/%s", self.conf.uri, pid, r)
     end
-    m.links = {}
-    m.links.self = string.format("%s/packages/%s", self.conf.uri, pkg.id)
     return m
 end
 
-function model:package(pkg, pid)
+---
+-- contents model
+---
+
+function model:contents(pid, files)
     local r = {}
     r.links = {}
-    r.links.self = string.format("%s/packages/%s", self.conf.uri, pid) 
-    r.data = self:packageModel(pkg)
+    r.links.self = string.format("%s/contents/%s", self.conf.uri, pid)
+    r.data = self:contentsData(pid, files)
     return r
 end
 
-function model:links(qty, pager)
-    local t,r = {},{}
-    t.first = 1
-    t.last = math.floor(qty/pager.limit)
-    t.next = pager.number+1 > t.last and t.last or pager.number+1
-    t.prev = pager.number-1 < 1 and 1 or pager.number-1
+function model:contentsData(pid, files)
+    local m = {}
+    m.type = "contents"
+    m.id = tostring(pid)
+    m.attributes = self:contentsAttributes(files)
+    m.relationships = self:contentsRelationships(pid)
+    return m
+end
+
+function model:contentsAttributes(files)
+    local r = {}
+    r.files = {}
+    for _,v in ipairs(files) do
+        table.insert(r.files, {path=v.path,file=v.file})
+    end
+    return r
+end
+
+function model:contentsRelationships(pid)
+    local m = {}
+    m.packages = {}
+    m.packages.links = {}
+    m.packages.links.self = string.format("%s/contents/%s/relationships/packages", self.conf.uri, pid)
+    return m
+end
+
+---
+-- links model
+---
+
+function model:arguments(args, nr)
+    local r = {}
+    for k,v in pairs(args) do
+        if k == "page[number]" then v = tostring(nr) end
+        table.insert(r, string.format("%s=%s",k,v:match("^%s*(.-)%s*$")))
+    end
+    return r
+end
+
+function model:links(pager, args)
+    local l,r = {},{}
+    l.first = 1
+    l.last = math.floor(pager.qty/pager.limit)
+    l.next = pager.number+1 > l.last and l.last or pager.number+1
+    if l.next == l.last then l.next = nil end
+    if pager.number-1 < 1 then l.prev = nil else l.prev = pager.number-1  end
     r.self = string.format("%s%s", self.conf.uri, pager.uri)
-    for k,v in pairs(t) do
-        r[k] = string.format("%s/packages?page[number]=%s",self.conf.uri, v)
+    if not args["page[number]"] then args["page[number]"] = 1 end
+    for k,v in pairs(l) do
+        local args = table.concat(self:arguments(args,v),"&")
+        r[k] = string.format("%s/packages?%s",self.conf.uri, args)
     end
     return r
 end
 
-function model:packages(pkgs, qty, pager)
+function model:packages(pkgs, pager, args)
     local r = {}
-    r.links = self:links(qty, pager)
+    r.links = self:links(pager, args)
     r.data = {}
     for _,pkg in pairs(pkgs) do
-        table.insert(r.data, self:packageModel(pkg))
+        table.insert(r.data, self:packageData(pkg))
     end
     return r
 end
 
-function model:fields(pkgs, pid, type)
+---
+--  relationships model
+---
+
+function model:relationshipsPackages(pkgs, pid, type)
+    local m = {}
+    m.links = {}
+    m.links.self = string.format("%s/packages/%s/relationships/%s", self.conf.uri, pid, type)
+    m.data = {}
+    for _,pkg in pairs(pkgs) do
+        table.insert(m.data, self:packageData(pkg))
+    end
+    return m
+end
+
+function model:relationshipsContents(data, pid, type)
+    local m = {}
+    m.links = {}
+    m.links.self = string.format("%s/contents/%s/relationships/%s", self.conf.uri, pid, type)
+    if type == "packages" then
+        m.data = self:packageData(data)
+    elseif type == "contents" then
+        m.data = self:contentsData(pid, data)
+    end
+    return m
+end
+
+---
+-- contents model
+---
+
+
+function model:contents(data)
     local r = {}
+    print(inspect(data))
     r.links = {}
-    r.links.self = string.format("%s/packages/%s/relationships/%s", self.conf.uri, pid, type)
-    r.data = {}
-    for _,pkg in pairs(pkgs) do
-        table.insert(r.data, self:packageModel(pkg))
-    end
+    r.links.self = string.format("%s/contents/%s", self.conf.uri, data.id)
+    r.data = self:contentsData(data)
     return r
 end
 
-function model:files(files)
+function model:contentsData(data)
+    local m = {}
+    m.type = "contents"
+    m.id = tostring(data.id)
+    m.attributes = self:contentsAttributes(data)
+    return m
+end
+
+function model:contentsAttributes(data)
     local r = {}
-    for _,file in ipairs(files) do
-        table.insert(r, string.format("%s/%s", file.path, file.file))
-    end
+    r.file = data.file
+    r.path = data.path
     return r
 end
 

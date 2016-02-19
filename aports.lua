@@ -474,4 +474,19 @@ function aports:getOrigins(pid)
     end
 end
 
+function aports:getContents(id)
+    local r = {}
+    local sql = [[SELECT files.id as id, files.file as file, files.path as path,
+        packages.arch as arch, packages.repo as repo, packages.branch as branch
+        FROM files
+        LEFT JOIN packages ON files.pid = packages.id
+        LEFT JOIN maintainer ON packages.maintainer = maintainer.id
+        WHERE files.id = ?]]
+    local stmt = self.db:prepare(sql)
+    stmt:bind_values(id)
+    for row in stmt:nrows(sql) do
+        return row
+    end
+end
+
 return aports
