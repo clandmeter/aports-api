@@ -100,7 +100,7 @@ function aports:createTables()
     self.db:exec("create index if not exists 'packages_name' on 'packages' (name)")
     self.db:exec("create index if not exists 'packages_maintainer' on 'packages' (maintainer)")
     local files = [[ create table if not exists 'files' (
-        'branch' TEXT,
+        'id' INTEGER primary key,
         'file' TEXT,
         'path' TEXT,
         'pid' INTEGER REFERENCES packages(id) on delete cascade
@@ -179,8 +179,8 @@ function aports:addPackages(branch, add)
             self:log(string.format("Adding: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
             pkg.maintainer = self:addMaintainer(pkg.maintainer)
             local pid = self:addHeader(pkg)
-            self:addFields(branch,pid,pkg)
-            self:addFiles(branch,pid,apk)
+            self:addFields(pid,pkg)
+            self:addFiles(pid,apk)
         else
             self:log(string.format("Could not find pkg: %s/%s/%s/%s-%s", branch, pkg.repo, pkg.arch, pkg.name, pkg.version))
         end
@@ -246,9 +246,8 @@ function aports:delPackages(branch, del)
     self.db:exec("commit")
 end
 
-function aports:formatField(v, pid)
+function aports:formatField(v)
     local r = {}
-    r.pid = pid
     for _,o in ipairs({">=","<=","><","=",">","<"}) do
         if v:match(o) then
             r.name,r.version = v:match("^(.*)"..o.."(.*)$")
@@ -260,7 +259,7 @@ function aports:formatField(v, pid)
     return r
 end
 
-function aports:addFields(branch, pid, pkg)
+function aports:addFields(pid, pkg)
     for _,field in ipairs(self.conf.db.fields) do
         local values = pkg[field] or {}
         --insert pkg name as a provides in the table.
@@ -269,8 +268,8 @@ function aports:addFields(branch, pid, pkg)
             VALUES (:pid, :name, :version, :operator) ]]
         local stmt = self.db:prepare(string.format(sql, field))
         for _,v in pairs(values) do
-            local r = self:formatField(v,pid)
-            r.branch = branch
+            local r = self:formatField(v)
+            r.pid = pid
             stmt:bind_names(r)
             stmt:step()
             stmt:reset()
@@ -292,14 +291,14 @@ function aports:getFilelist(apk)
     return r
 end
 
-function aports:addFiles(branch, pid, apk)
+function aports:addFiles(pid, apk)
+    print(pid)
     local files = self:getFilelist(apk)
-    local sql = [[ insert into 'files' ("pid", "file", "path")
-        VALUES (:pid, :file, :path) ]]
+    local sql = [[ insert into 'files' ("file", "path", "pid")
+        VALUES (:file, :path, :pid) ]]
     local stmt = self.db:prepare(sql)
     for _,file in pairs(files) do
         file.pid = pid
-        file.branch = branch
         stmt:bind_names(file)
         local step = stmt:step()
         stmt:reset()
@@ -416,12 +415,11 @@ function aports:getPackage(pid)
     end
 end
 
-
 function aports:whereQuery(values,tname)
     local r = {}
     for field in pairs(values) do
         tfield = table and string.format("%s.%s",tname, field) or field
-        table.insert(r, string.format(" %s GLOB :%s ", tfield, field))
+        table.insert(r, string.format("%s GLOB :%s", tfield, field))
     end
     return next(r) and string.format("WHERE %s", table.concat(r, " AND ")) or ""
 end
