@@ -474,8 +474,7 @@ function aports:getOrigins(pid)
     end
 end
 
-function aports:getContents(id)
-    local r = {}
+function aports:getContent(id)
     local sql = [[SELECT files.id as id, files.file as file, files.path as path,
         packages.arch as arch, packages.repo as repo, packages.branch as branch
         FROM files
@@ -487,6 +486,17 @@ function aports:getContents(id)
     for row in stmt:nrows(sql) do
         return row
     end
+end
+
+function aports:getContents(pid)
+    local r = {}
+    local sql = [[ SELECT * FROM files WHERE pid = ?]]
+    local stmt = self.db:prepare(sql)
+    stmt:bind_values(pid)
+    for row in stmt:nrows(sql) do
+        table.insert(r, row)
+    end
+    return r
 end
 
 return aports

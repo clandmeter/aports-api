@@ -97,58 +97,6 @@ function ApiPackagesRenderer:get()
     end
 end
 
-local ApiRelationshipsDependsRenderer = class("ApiRelationshipsDependsRenderer", turbo.web.RequestHandler)
-
-function ApiRelationshipsDependsRenderer:get(pid)
-    local pkgs = self.options.aports:getDepends(pid)
-    if next(pkgs) then
-        local json = self.options.model:relationshipsPackages(pkgs, pid, "depends")
-        self:add_header("Content-Type", "application/vnd.api+json")
-        self:write(cjson.encode(json))
-    else
-        error(turbo.web.HTTPError(404, "404 Page not found."))
-    end
-end
-
-local ApiRelationshipsInstallIfRenderer = class("ApiRelationshipsInstallIfRenderer", turbo.web.RequestHandler)
-
-function ApiRelationshipsInstallIfRenderer:get(pid)
-    local pkgs = self.options.aports:getInstallIf(pid)
-    if next(pkgs) then
-        local json = self.options.model:relationshipsPackages(pkgs, pid, "install_if")
-        self:add_header("Content-Type", "application/vnd.api+json")
-        self:write(cjson.encode(json))
-    else
-        error(turbo.web.HTTPError(404, "404 Page not found."))
-    end
-end
-
-local ApiRelationshipsProvidesRenderer = class("ApiRelationshipsProvidesRenderer", turbo.web.RequestHandler)
-
-function ApiRelationshipsProvidesRenderer:get(pid)
-    local pkgs = self.options.aports:getProvides(pid)
-    if next(pkgs) then
-        local json = self.options.model:relationshipsPackages(pkgs, pid, "provides")
-        self:add_header("Content-Type", "application/vnd.api+json")
-        self:write(cjson.encode(json))
-    else
-        error(turbo.web.HTTPError(404, "404 Page not found."))
-    end
-end
-
-local ApiRelationshipsOriginsRenderer = class("ApiRelationshipsOriginsRenderer", turbo.web.RequestHandler)
-
-function ApiRelationshipsOriginsRenderer:get(pid)
-    local pkgs = self.options.aports:getOrigins(pid)
-    if next(pkgs) then
-        local json = self.options.model:relationshipsPackages(pkgs, pid, "origins")
-        self:add_header("Content-Type", "application/vnd.api+json")
-        self:write(cjson.encode(json))
-    else
-        error(turbo.web.HTTPError(404, "404 Page not found."))
-    end
-end
-
 local ApiRelationshipsPackagesRenderer = class("ApiRelationshipsPackagesRenderer", turbo.web.RequestHandler)
 
 function ApiRelationshipsPackagesRenderer:get(pid)
@@ -165,22 +113,9 @@ end
 local ApiRelationshipsContentRenderer = class("ApiRelationshipsContentRenderer", turbo.web.RequestHandler)
 
 function ApiRelationshipsContentRenderer:get(pid)
-    local files = self.options.aports:getFiles(pid)
-    if next(files) then
-        local json = self.options.model:relationshipsContents(files, pid, "contents")
-        self:add_header("Content-Type", "application/vnd.api+json")
-        self:write(cjson.encode(json))
-    else
-        error(turbo.web.HTTPError(404, "404 Page not found."))
-    end
-end
-
-local ApiContentRenderer = class("ApiContentRenderer", turbo.web.RequestHandler)
-
-function ApiContentRenderer:get(pid)
-    local files = self.options.aports:getFiles(pid)
-    if next(files) then
-        local json = self.options.model:contents(pid, files)
+    local cnts = self.options.aports:getContents(pid)
+    if next(cnts) then
+        local json = self.options.model:relationshipsContents(cnts, pid, "contents")
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -191,9 +126,31 @@ end
 local ApiContentRenderer = class("ApiContentRenderer", turbo.web.RequestHandler)
 
 function ApiContentRenderer:get(id)
-    local cnt = self.options.aports:getContents(id)
+    local cnt = self.options.aports:getContent(id)
     if cnt then
         local json = self.options.model:contents(cnt)
+        self:add_header("Content-Type", "application/vnd.api+json")
+        self:write(cjson.encode(json))
+    else
+        error(turbo.web.HTTPError(404, "404 Page not found."))
+    end
+end
+
+local ApiPackagesRelationship = class("ApiPackagesRelationship", turbo.web.RequestHandler)
+
+function ApiPackagesRelationship:get(pid, type)
+    local pkgs = {}
+    if type == "depends" then
+        pkgs = self.options.aports:getDepends(pid)
+    elseif type == "install_if" then
+        pkgs = self.options.aports:getInstallIf(pid)
+    elseif type == "provides" then
+        pkgs = self.options.aports:getProvides(pid)
+    elseif type == "origins" then
+        pkgs = self.options.aports:getOrigins(pid)
+    end
+    if next(pkgs) then
+        local json = self.options.model:relationshipsPackages(pkgs, pid, type)
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))
     else
@@ -208,17 +165,17 @@ function main()
     local model = model(conf, format)
     local update = function() aports:update() end
     turbo.web.Application({
+        --packages
         {"^/$", turbo.web.RedirectHandler, "/packages"},
         {"^/packages/(.*)/relationships/contents$", ApiRelationshipsContentRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/origins$", ApiRelationshipsOriginsRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/provides$", ApiRelationshipsProvidesRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/depends$", ApiRelationshipsDependsRenderer, {aports=aports,model=model}},
-        {"^/packages/(.*)/relationships/install_if$", ApiRelationshipsInstallIfRenderer, {aports=aports,model=model}},
+        {"^/packages/(.*)/relationships/(.*)$", ApiPackagesRelationship, {aports=aports,model=model}},
         {"^/packages/(.*)$", ApiPackageRenderer, {aports=aports,model=model}},
+        {"^/packages", ApiPackagesRenderer, {aports=aports,model=model}},
+        --contents
         {"^/contents/(.*)/relationships/packages$", ApiRelationshipsPackagesRenderer, {aports=aports,model=model}},
         {"^/contents/(.*)$", ApiContentRenderer, {aports=aports,model=model}},
         {"^/contents", ApiContentsRenderer, {aports=aports,model=model}},
-        {"^/packages", ApiPackagesRenderer, {aports=aports,model=model}},
+        --static
         {"favicon.ico", turbo.web.StaticFileHandler, "assets/favicon.ico"},
     }):listen(conf.port)
     local loop = turbo.ioloop.instance()

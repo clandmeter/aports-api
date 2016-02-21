@@ -126,6 +126,10 @@ function model:links(pager, args)
     return r
 end
 
+---
+-- packages model
+---
+
 function model:packages(pkgs, pager, args)
     local r = {}
     r.links = self:links(pager, args)
@@ -158,7 +162,10 @@ function model:relationshipsContents(data, pid, type)
     if type == "packages" then
         m.data = self:packageData(data)
     elseif type == "contents" then
-        m.data = self:contentsData(pid, data)
+        m.data = {}
+        for k,v in pairs(data) do
+            table.insert(m.data, self:contentsData(v))
+        end
     end
     return m
 end
@@ -170,7 +177,6 @@ end
 
 function model:contents(data)
     local r = {}
-    print(inspect(data))
     r.links = {}
     r.links.self = string.format("%s/contents/%s", self.conf.uri, data.id)
     r.data = self:contentsData(data)
