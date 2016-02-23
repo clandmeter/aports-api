@@ -188,6 +188,8 @@ function model:contentsData(data)
     m.type = "contents"
     m.id = tostring(data.id)
     m.attributes = self:contentsAttributes(data)
+    m.relationships = self:contentsRelationships(data)
+    m.links = self:contentsLinks(data)
     return m
 end
 
@@ -197,5 +199,20 @@ function model:contentsAttributes(data)
     r.path = data.path
     return r
 end
+
+function model:contentsRelationships(data)
+    local r = {}
+    r.packages = {}
+    r.packages.links = {}
+    r.packages.links.self = string.format("%s/contents/%s/relationships/packages", self.conf.uri, data.id)
+    return r
+end
+
+function model:contentsLinks(data)
+    local r = {}
+    r.self = string.format("%s/contents/%s", self.conf.uri, data.id)
+    return r
+end
+
 
 return model
