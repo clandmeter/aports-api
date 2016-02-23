@@ -32,7 +32,7 @@ function getSortArguments(obj)
         -- check if we want to invert the sort order
         if sort:match("^-") then
             sort = sort:sub(2)
-            r.order = "DESC"
+            r.order = "ASC"
         end
         -- check if column exists
         for i in sort:gmatch('[^,]+') do
@@ -41,10 +41,10 @@ function getSortArguments(obj)
             end
         end
         r.sort = sort
-        r.order = r.order or "ASC"
+        r.order = r.order or "DESC"
     else
         r.sort = conf.sort.default
-        r.order = "ASC"
+        r.order = "DESC"
     end
     return r
 end
