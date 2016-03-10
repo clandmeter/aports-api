@@ -99,6 +99,7 @@ function aports:createTables()
     self.db:exec(packages)
     self.db:exec("create index if not exists 'packages_name' on 'packages' (name)")
     self.db:exec("create index if not exists 'packages_maintainer' on 'packages' (maintainer)")
+    self.db:exec("create index if not exists 'packages_build_time' on 'packages' (build_time)")
     local files = [[ create table if not exists 'files' (
         'id' INTEGER primary key,
         'file' TEXT,
@@ -292,7 +293,6 @@ function aports:getFilelist(apk)
 end
 
 function aports:addFiles(pid, apk)
-    print(pid)
     local files = self:getFilelist(apk)
     local sql = [[ insert into 'files' ("file", "path", "pid")
         VALUES (:file, :path, :pid) ]]
