@@ -88,7 +88,7 @@ function ApiPackagesRenderer:get()
     local pkgs = self.options.aports:getPackages(filter, sort, pager)
     local args = self.request.arguments or {}
     if next(pkgs) then
-        pager.qty = self.options.aports:getRowCount("packages")
+        pager.qty = self.options.aports:countPackages(filter)
         local json = self.options.model:packages(pkgs, pager, args)
         self:add_header("Content-Type", "application/vnd.api+json")
         self:write(cjson.encode(json))

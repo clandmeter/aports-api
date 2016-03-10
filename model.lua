@@ -74,11 +74,15 @@ end
 
 function model:links(pager, args)
     local l,r = {},{}
-    l.first = 1
-    l.last = math.floor(pager.qty/pager.limit)
-    l.next = pager.number+1 > l.last and l.last or pager.number+1
-    if l.next == l.last then l.next = nil end
-    if pager.number-1 < 1 then l.prev = nil else l.prev = pager.number-1  end
+    local last = math.floor(pager.qty/pager.limit)
+    -- only include links where there are multiple pages
+    if last > 1 then
+        l.first = 1
+        l.last = last
+        l.next = (pager.number+1 > l.last) and l.last or pager.number+1
+        if l.next == l.last then l.next = nil end
+        if (pager.number-1 < 1) then l.prev = nil else l.prev = pager.number-1  end
+    end
     r.self = string.format("%s%s", self.conf.uri, pager.uri)
     if not args["page[number]"] then args["page[number]"] = 1 end
     for k,v in pairs(l) do
